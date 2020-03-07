@@ -105,7 +105,7 @@ with open("src/morphos.la") as f:
 
             morphos[index] = new_tag
 
-assert morphos["190"] == "--sppamv-"
+assert morphos["190"] == "g-sppamv-"
 assert morphos["121"] == "v1spia---"
 
 #############################################################
@@ -142,8 +142,8 @@ def convert_models(lines):
         "suf": [],  # Dict of Suffixes
         "sufd": []  # Possible endings
     }
-    __R = re.compile("^R:(?P<root>\d+):(?P<remove>\w+)[,:]?(?P<add>\w+)?", flags=re.UNICODE)
-    __des = re.compile("^des[\+]?:(?P<range>[\d\-,]+):(?P<root>\d+):([\w\-,;]+)$", flags=re.UNICODE)
+    __R = re.compile("^R:(?P<root>\d+):(?P<remove>-|\w+)[,:]?(?P<add>\w+)?", flags=re.UNICODE)
+    __des = re.compile("^des[\+]?:(?P<range>[\d\-,]+):(?P<root>\d+):(?P<des>[\w\-,;]+)?$", flags=re.UNICODE)
     last_model = None
     variable_replacement = {}
 
@@ -167,6 +167,9 @@ def convert_models(lines):
             elif line.startswith("R:"):
                 # Still do not know how to deal with "K"
                 root, remove, chars = __R.match(line).groups()
+                if remove == "-":
+                    # ToDo: Check how radical with "-" should work
+                    continue
                 if chars == "0":
                     chars = ""
                 models[last_model]["R"][root] = [remove, chars]
@@ -190,9 +193,11 @@ def convert_models(lines):
                 try:
                     des_number, root, des = __des.match(line).groups()
                 except AttributeError as E:
-                    print(line)
+                    print(line, lineno)
                     raise E
-
+                if not des:
+                    # ToDo : "Deal with empty value in desinence ?"
+                    continue
                 ids = parse_range(des_number)
                 for i, d in zip(ids, des.split(";")):
                     if line.startswith("des+") and int(i) in models[last_model]["des"]:
@@ -207,7 +212,9 @@ def convert_models(lines):
             elif line.startswith("sufd:"):
                 models[last_model]["sufd"] += line[5:].split(",")  # Sufd are suffix always present
             else:
-                print(line.split(":")[0])
+                if line.startswith("pos"):
+                    continue
+                print(line.split(":")[0], lineno)
     return models
 
 
@@ -256,7 +263,7 @@ def parseLemma(lines):
                 line = line[:last_one] + "|" * missing + line[last_one:]
             result = regexp.match(line)
             if not result:
-                print(line)
+                print("Unable to parse lemma", line)
             else:
                 result = result.groupdict(default=None)
                 # we always normalize the key
@@ -271,6 +278,10 @@ with open("./src/lemmes.la") as f:
 assert lemmas["volumen"]["geninf"] == "volumin"
 assert lemmas["volumen"]["lemma"] == "volumen"
 assert lemmas["volumen"]["model"] == "corpus"
+
+with open("./src/lem_ext.la") as f:
+    lines = normalize_unicode(f.read()).split("\n")
+    lemmas = parseLemma(lines)
 
 with open("./collected.json", "w") as f:
     json.dump(
