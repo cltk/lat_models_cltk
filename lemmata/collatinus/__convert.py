@@ -300,7 +300,13 @@ with open("./collected.json", "w") as f:
         {
             "pos": morphos,
             "models": norm_models,
-            "lemmas": lemmas
+            "lemmas": lemmas,
+            "maps": {
+                quantity: lemma
+                for lemma, infos in lemmas.items()
+                if infos["quantity"] and "," in infos["quantity"]
+                for quantity in infos["quantity"].split(",")
+            }
         },
         f
     )
