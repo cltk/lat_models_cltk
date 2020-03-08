@@ -249,8 +249,41 @@ def parseLemma(lines):
     """
 
     lemmas = {}
-    regexp = re.compile("^(?P<lemma>\w+){1}(?P<quantity>\=\w+)?\|(?P<model>\w+)?\|[-]*(?P<geninf>[\w,]+)?[-]*\|[-]*(?P<perf>[\w,]+)?[-]*\|(?P<lexicon>.*)?", flags=re.UNICODE)
-
+    lemma_without_variations = re.compile(
+        r"^(?P<lemma>\w+){1}(?P<quantity>\=\w+)?\|"
+        r"(?P<model>\w+)?\|"
+        r"[-]*(?P<geninf>[\w,]+)?[-]*\|"
+        r"[-]*(?P<perf>[\w,]+)?[-]*\|"
+        r"(?P<lexicon>.*)?",
+        flags=re.UNICODE
+    )
+    # paenitudo=paenitudo,poenitudo|miles|paenitudin,poenitudin||inis, f.|1
+    lemma_with_two_variations = re.compile(
+        r"^\w+=(?P<lemma>[\w,]+){1}(?P<quantity>\=\w+)?\|"
+        r"(?P<model>\w+)?\|"
+        r"[-]*(?P<geninf>\w+,[\w,]+){1}[-]*\|"
+        r"[-]*(?P<perf>[\w,]+)?[-]*\|"
+        r"(?P<lexicon>.*)?",
+        flags=re.UNICODE
+    )
+    # paenitudo=paenitudo,poenitudo|miles|paenitudin,poenitudin||inis, f.|1
+    lemma_with_var_perfe = re.compile(
+        r"^\w+=(?P<lemma>[\w,]+){1}(?P<quantity>\=\w+)?\|"
+        r"(?P<model>\w+)?\|"
+        r"[-]*(?P<geninf>[\w,]+)?[-]*\|"
+        r"[-]*(?P<perf>\w+,[\w,]+){1}[-]*\|"
+        r"(?P<lexicon>.*)?",
+        flags=re.UNICODE
+    )
+    # idoleum=idoleum,idolium|templum|||i, n.|1
+    lemma_with_radical_variations = re.compile(
+        r"^\w+=(?P<lemma>[\w,]+){1}(?P<quantity>\=\w+)?\|"
+        r"(?P<model>\w+)?\|"
+        r"[-]*(?P<geninf>[\w]+)?[-]*\|"
+        r"[-]*(?P<perf>[\w]+)?[-]*\|"
+        r"(?P<lexicon>.*)?",
+        flags=re.UNICODE
+    )
     for lineno, line in enumerate(lines):
         if not line.startswith("!") and "|" in line:
             if line.count("|") != 4:
@@ -261,14 +294,44 @@ def parseLemma(lines):
                 missing = should_have - line.count("|")
                 last_one = line.rfind("|")
                 line = line[:last_one] + "|" * missing + line[last_one:]
-            result = regexp.match(line)
-            if not result:
-                print("Unable to parse lemma", line)
-            else:
+
+            result = lemma_without_variations.match(line)
+            if result:
                 result = result.groupdict(default=None)
                 # we always normalize the key
                 lemmas[normalize_unicode(result["lemma"])] = result
+            else:
+                # if we have
+                #   jajunitas=jajunitas,jejunitas|miles|jajunitat,jejunitat||atis, f.|2
+                genitive_and_nom = lemma_with_two_variations.match(line)
+                #   calefio=calefio,calfio|fio||calefact,calfact|fis, fieri, factus sum (passif de calefacio)|2
+                present_and_perfect = lemma_with_var_perfe.match(line)
+                #   sandaraca=sandaraca,sandaracha,sanderaca|uita|||ae, f.|1
+                nominative_var = lemma_with_radical_variations.match(line)
+                if genitive_and_nom:
+                    print("--> Multiple genitive and nominative", line)
+                    for lemma, genitive in zip(genitive_and_nom["lemma"].split(","), genitive_and_nom["geninf"].split(",")):
+                        subresult = {k: v for k, v in genitive_and_nom.groupdict().items()}
+                        subresult["lemma"] = lemma
+                        subresult["geninf"] = genitive
+                        lemmas[normalize_unicode(subresult["lemma"])] = subresult
+                elif present_and_perfect:
+                    print("--> Multiple present and perfect", line)
+                    for lemma, perf in zip(present_and_perfect["lemma"].split(","), present_and_perfect["perf"].split(",")):
+                        subresult = {k: v for k, v in present_and_perfect.groupdict().items()}
+                        subresult["lemma"] = lemma
+                        subresult["perf"] = perf
+                        lemmas[normalize_unicode(subresult["lemma"])] = subresult
+                elif nominative_var:
+                    print("--> Multiple nominative", line)
+                    for lemma in nominative_var["lemma"].split(","):
+                        subresult = {k: v for k, v in nominative_var.groupdict().items()}
+                        subresult["lemma"] = lemma
+                        lemmas[normalize_unicode(subresult["lemma"])] = subresult
+                else:
+                    print("Unable to parse lemma", line)
     return lemmas
+
 
 with open("./src/lemmes.la") as f:
     lines = normalize_unicode(f.read()).split("\n")
