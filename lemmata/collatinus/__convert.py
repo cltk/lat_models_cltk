@@ -198,12 +198,28 @@ def convert_models(lines):
                 if not des:
                     # ToDo : "Deal with empty value in desinence ?"
                     continue
-                ids = parse_range(des_number)
-                for i, d in zip(ids, des.split(";")):
-                    if line.startswith("des+") and int(i) in models[last_model]["des"]:
-                        models[last_model]["des"][int(i)].append((root, d.replace("-", "").split(",")))
+                nums = parse_range(des_number)
+
+                desinence = des.split(";")
+                last_des = []
+                for desinence_index, desinence_num in enumerate(nums):
+                    if desinence_index >= len(desinence):
+                        # We might have ranges where number of item < ranges. This seems to mean last item is repeated.
+                        current_des = last_des
                     else:
-                        models[last_model]["des"][int(i)] = [(root, d.replace("-", "").split(","))]
+                        current_des = desinence[desinence_index].replace("-", "").split(",")
+
+                    if current_des:
+                        desinence_int = int(desinence_num)
+                        # If we have des+, we add to the known desinence
+                        if line.startswith("des+") and desinence_int in models[last_model]["des"]:
+                            models[last_model]["des"][desinence_int].append((root, current_des))
+                        else:
+                            models[last_model]["des"][desinence_int] = [(root, current_des)]
+                        last_des = current_des
+                    else:
+                        print("Line %s : No desinence for id %s (%s)" % (lineno, desinence_num, last_model))
+
             elif line.startswith("abs:"):
                 models[last_model]["abs"] = parse_range(line[4:])  # Add the one we should not find as desi
             elif line.startswith("suf:"):
@@ -266,7 +282,7 @@ def parseLemma(lines):
             if line.count("|") != 4:
                 # We need to clean up the mess
                 # Some line lacks a |
-                # I assume this means we need to add as many before the dictionary
+                # I assume this means we need;ĭbŭs to add as many before the dictionary
                 should_have = 4
                 missing = should_have - line.count("|")
                 last_one = line.rfind("|")
