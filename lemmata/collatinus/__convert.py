@@ -105,7 +105,7 @@ with open("src/morphos.la") as f:
 
             morphos[index] = new_tag
 
-assert morphos["190"] == "--sppamv-"
+assert morphos["190"] == "g-sppamv-"
 assert morphos["121"] == "v1spia---"
 
 #############################################################
@@ -142,8 +142,8 @@ def convert_models(lines):
         "suf": [],  # Dict of Suffixes
         "sufd": []  # Possible endings
     }
-    __R = re.compile("^R:(?P<root>\d+):(?P<remove>\w+)[,:]?(?P<add>\w+)?", flags=re.UNICODE)
-    __des = re.compile("^des[\+]?:(?P<range>[\d\-,]+):(?P<root>\d+):([\w\-,;]+)$", flags=re.UNICODE)
+    __R = re.compile("^R:(?P<root>\d+):(?P<remove>-|\w+)[,:]?(?P<add>\w+)?", flags=re.UNICODE)
+    __des = re.compile("^des[\+]?:(?P<range>[\d\-,]+):(?P<root>\d+):(?P<des>[\w\-,;]+)?$", flags=re.UNICODE)
     last_model = None
     variable_replacement = {}
 
@@ -167,6 +167,9 @@ def convert_models(lines):
             elif line.startswith("R:"):
                 # Still do not know how to deal with "K"
                 root, remove, chars = __R.match(line).groups()
+                if remove == "-":
+                    # ToDo: Check how radical with "-" should work
+                    continue
                 if chars == "0":
                     chars = ""
                 models[last_model]["R"][root] = [remove, chars]
@@ -190,15 +193,33 @@ def convert_models(lines):
                 try:
                     des_number, root, des = __des.match(line).groups()
                 except AttributeError as E:
-                    print(line)
+                    print(line, lineno)
                     raise E
+                if not des:
+                    # ToDo : "Deal with empty value in desinence ?"
+                    continue
+                nums = parse_range(des_number)
 
-                ids = parse_range(des_number)
-                for i, d in zip(ids, des.split(";")):
-                    if line.startswith("des+") and int(i) in models[last_model]["des"]:
-                        models[last_model]["des"][int(i)].append((root, d.replace("-", "").split(",")))
+                desinence = des.split(";")
+                last_des = []
+                for desinence_index, desinence_num in enumerate(nums):
+                    if desinence_index >= len(desinence):
+                        # We might have ranges where number of item < ranges. This seems to mean last item is repeated.
+                        current_des = last_des
                     else:
-                        models[last_model]["des"][int(i)] = [(root, d.replace("-", "").split(","))]
+                        current_des = desinence[desinence_index].replace("-", "").split(",")
+
+                    if current_des:
+                        desinence_int = int(desinence_num)
+                        # If we have des+, we add to the known desinence
+                        if line.startswith("des+") and desinence_int in models[last_model]["des"]:
+                            models[last_model]["des"][desinence_int].append((root, current_des))
+                        else:
+                            models[last_model]["des"][desinence_int] = [(root, current_des)]
+                        last_des = current_des
+                    else:
+                        print("Line %s : No desinence for id %s (%s)" % (lineno, desinence_num, last_model))
+
             elif line.startswith("abs:"):
                 models[last_model]["abs"] = parse_range(line[4:])  # Add the one we should not find as desi
             elif line.startswith("suf:"):
@@ -207,7 +228,9 @@ def convert_models(lines):
             elif line.startswith("sufd:"):
                 models[last_model]["sufd"] += line[5:].split(",")  # Sufd are suffix always present
             else:
-                print(line.split(":")[0])
+                if line.startswith("pos"):
+                    continue
+                print(line.split(":")[0], lineno)
     return models
 
 
@@ -239,29 +262,41 @@ def parseLemma(lines):
     :param lines:
     :param normalize:
     :return:
+
+    # ToDo: Fix issue with
+    Caeres2=Cāeres|miles|Cāerĭt,Cāerĭtēt||ĭtis, (-ētis), f.|2
+    Caerēs=Cāerēs|diues|Cāerĭt||ĭtis|2
     """
 
     lemmas = {}
-    regexp = re.compile("^(?P<lemma>\w+){1}(?P<quantity>\=\w+)?\|(?P<model>\w+)?\|[-]*(?P<geninf>[\w,]+)?[-]*\|[-]*(?P<perf>[\w,]+)?[-]*\|(?P<lexicon>.*)?", flags=re.UNICODE)
-
+    lemma_without_variations = re.compile(
+        r"^(?P<lemma>\w+\d?){1}(?:\=(?P<quantity>[\w,]+))?\|"
+        r"(?P<model>\w+)?\|"
+        r"[-]*(?P<geninf>[\w,]+)?[-]*\|"
+        r"[-]*(?P<perf>[\w,]+)?[-]*\|"
+        r"(?P<lexicon>.*)?",
+        flags=re.UNICODE
+    )
     for lineno, line in enumerate(lines):
         if not line.startswith("!") and "|" in line:
             if line.count("|") != 4:
                 # We need to clean up the mess
                 # Some line lacks a |
-                # I assume this means we need to add as many before the dictionary
+                # I assume this means we need;ĭbŭs to add as many before the dictionary
                 should_have = 4
                 missing = should_have - line.count("|")
                 last_one = line.rfind("|")
                 line = line[:last_one] + "|" * missing + line[last_one:]
-            result = regexp.match(line)
-            if not result:
-                print(line)
-            else:
+
+            result = lemma_without_variations.match(line)
+            if result:
                 result = result.groupdict(default=None)
                 # we always normalize the key
                 lemmas[normalize_unicode(result["lemma"])] = result
+            else:
+                print("Unable to parse lemma", line)
     return lemmas
+
 
 with open("./src/lemmes.la") as f:
     lines = normalize_unicode(f.read()).split("\n")
@@ -272,12 +307,22 @@ assert lemmas["volumen"]["geninf"] == "volumin"
 assert lemmas["volumen"]["lemma"] == "volumen"
 assert lemmas["volumen"]["model"] == "corpus"
 
+with open("./src/lem_ext.la") as f:
+    lines = normalize_unicode(f.read()).split("\n")
+    lemmas.update(parseLemma(lines))
+
 with open("./collected.json", "w") as f:
     json.dump(
         {
             "pos": morphos,
             "models": norm_models,
-            "lemmas": lemmas
+            "lemmas": lemmas,
+            "maps": {
+                quantity: lemma
+                for lemma, infos in lemmas.items()
+                if infos["quantity"] and "," in infos["quantity"]
+                for quantity in infos["quantity"].split(",")
+            }
         },
         f
     )

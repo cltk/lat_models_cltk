@@ -20,6 +20,9 @@
 ! Une morpho par ligne
 ! Toute ligne commençant par '!' est un commentaire
 !
+! Ajoutés les cas, genres etc… après un séparateur "! --- "
+! Ph. 27 octobre 2016
+!
 1:nominatif singulier
 2:vocatif singulier
 3:accusatif singulier
@@ -435,5 +438,6 @@
 413:locatif
 414:positif 
 415:infinitif futur actif
-416:
+416:inv.
 ! Cette dernière ligne est à conserver pour les invariables.
+! --- Cas
